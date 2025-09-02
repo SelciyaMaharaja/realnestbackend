@@ -1,18 +1,9 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.updateApplicationStatus = exports.createApplication = exports.listApplications = void 0;
 const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
-const listApplications = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+const listApplications = async (req, res) => {
     try {
         const { userId, userType } = req.query;
         let whereClause = {};
@@ -28,7 +19,7 @@ const listApplications = (req, res) => __awaiter(void 0, void 0, void 0, functio
                 };
             }
         }
-        const applications = yield prisma.application.findMany({
+        const applications = await prisma.application.findMany({
             where: whereClause,
             include: {
                 property: {
@@ -48,8 +39,8 @@ const listApplications = (req, res) => __awaiter(void 0, void 0, void 0, functio
             }
             return nextPaymentDate;
         }
-        const formattedApplications = yield Promise.all(applications.map((app) => __awaiter(void 0, void 0, void 0, function* () {
-            const lease = yield prisma.lease.findFirst({
+        const formattedApplications = await Promise.all(applications.map(async (app) => {
+            const lease = await prisma.lease.findFirst({
                 where: {
                     tenant: {
                         cognitoId: app.tenantCognitoId,
@@ -58,9 +49,21 @@ const listApplications = (req, res) => __awaiter(void 0, void 0, void 0, functio
                 },
                 orderBy: { startDate: "desc" },
             });
-            return Object.assign(Object.assign({}, app), { property: Object.assign(Object.assign({}, app.property), { address: app.property.location.address }), manager: app.property.manager, lease: lease
-                    ? Object.assign(Object.assign({}, lease), { nextPaymentDate: calculateNextPaymentDate(lease.startDate) }) : null });
-        })));
+            return {
+                ...app,
+                property: {
+                    ...app.property,
+                    address: app.property.location.address,
+                },
+                manager: app.property.manager,
+                lease: lease
+                    ? {
+                        ...lease,
+                        nextPaymentDate: calculateNextPaymentDate(lease.startDate),
+                    }
+                    : null,
+            };
+        }));
         res.json(formattedApplications);
     }
     catch (error) {
@@ -68,12 +71,12 @@ const listApplications = (req, res) => __awaiter(void 0, void 0, void 0, functio
             .status(500)
             .json({ message: `Error retrieving applications: ${error.message}` });
     }
-});
+};
 exports.listApplications = listApplications;
-const createApplication = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+const createApplication = async (req, res) => {
     try {
         const { applicationDate, status, propertyId, tenantCognitoId, name, email, phoneNumber, message, } = req.body;
-        const property = yield prisma.property.findUnique({
+        const property = await prisma.property.findUnique({
             where: { id: propertyId },
             select: { pricePerMonth: true, securityDeposit: true },
         });
@@ -81,9 +84,9 @@ const createApplication = (req, res) => __awaiter(void 0, void 0, void 0, functi
             res.status(404).json({ message: "Property not found" });
             return;
         }
-        const newApplication = yield prisma.$transaction((prisma) => __awaiter(void 0, void 0, void 0, function* () {
+        const newApplication = await prisma.$transaction(async (prisma) => {
             // Create lease first
-            const lease = yield prisma.lease.create({
+            const lease = await prisma.lease.create({
                 data: {
                     startDate: new Date(), // Today
                     endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)), // 1 year from today
@@ -98,7 +101,7 @@ const createApplication = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 },
             });
             // Then create application with lease connection
-            const application = yield prisma.application.create({
+            const application = await prisma.application.create({
                 data: {
                     applicationDate: new Date(applicationDate),
                     status,
@@ -123,7 +126,7 @@ const createApplication = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 },
             });
             return application;
-        }));
+        });
         res.status(201).json(newApplication);
     }
     catch (error) {
@@ -131,14 +134,14 @@ const createApplication = (req, res) => __awaiter(void 0, void 0, void 0, functi
             .status(500)
             .json({ message: `Error creating application: ${error.message}` });
     }
-});
+};
 exports.createApplication = createApplication;
-const updateApplicationStatus = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+const updateApplicationStatus = async (req, res) => {
     try {
         const { id } = req.params;
         const { status } = req.body;
         console.log("status:", status);
-        const application = yield prisma.application.findUnique({
+        const application = await prisma.application.findUnique({
             where: { id: Number(id) },
             include: {
                 property: true,
@@ -150,7 +153,7 @@ const updateApplicationStatus = (req, res) => __awaiter(void 0, void 0, void 0, 
             return;
         }
         if (status === "Approved") {
-            const newLease = yield prisma.lease.create({
+            const newLease = await prisma.lease.create({
                 data: {
                     startDate: new Date(),
                     endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
@@ -161,7 +164,7 @@ const updateApplicationStatus = (req, res) => __awaiter(void 0, void 0, void 0, 
                 },
             });
             // Update the property to connect the tenant
-            yield prisma.property.update({
+            await prisma.property.update({
                 where: { id: application.propertyId },
                 data: {
                     tenants: {
@@ -170,7 +173,7 @@ const updateApplicationStatus = (req, res) => __awaiter(void 0, void 0, void 0, 
                 },
             });
             // Update the application with the new lease ID
-            yield prisma.application.update({
+            await prisma.application.update({
                 where: { id: Number(id) },
                 data: { status, leaseId: newLease.id },
                 include: {
@@ -182,13 +185,13 @@ const updateApplicationStatus = (req, res) => __awaiter(void 0, void 0, void 0, 
         }
         else {
             // Update the application status (for both "Denied" and other statuses)
-            yield prisma.application.update({
+            await prisma.application.update({
                 where: { id: Number(id) },
                 data: { status },
             });
         }
         // Respond with the updated application details
-        const updatedApplication = yield prisma.application.findUnique({
+        const updatedApplication = await prisma.application.findUnique({
             where: { id: Number(id) },
             include: {
                 property: true,
@@ -203,5 +206,5 @@ const updateApplicationStatus = (req, res) => __awaiter(void 0, void 0, void 0, 
             .status(500)
             .json({ message: `Error updating application status: ${error.message}` });
     }
-});
+};
 exports.updateApplicationStatus = updateApplicationStatus;

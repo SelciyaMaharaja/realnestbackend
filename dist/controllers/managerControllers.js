@@ -1,22 +1,13 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getManagerProperties = exports.updateManager = exports.createManager = exports.getManager = void 0;
 const client_1 = require("@prisma/client");
 const wkt_1 = require("@terraformer/wkt");
 const prisma = new client_1.PrismaClient();
-const getManager = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+const getManager = async (req, res) => {
     try {
         const { cognitoId } = req.params;
-        const manager = yield prisma.manager.findUnique({
+        const manager = await prisma.manager.findUnique({
             where: { cognitoId },
         });
         if (manager) {
@@ -31,12 +22,12 @@ const getManager = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
             .status(500)
             .json({ message: `Error retrieving manager: ${error.message}` });
     }
-});
+};
 exports.getManager = getManager;
-const createManager = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+const createManager = async (req, res) => {
     try {
         const { cognitoId, name, email, phoneNumber } = req.body;
-        const manager = yield prisma.manager.create({
+        const manager = await prisma.manager.create({
             data: {
                 cognitoId,
                 name,
@@ -51,13 +42,13 @@ const createManager = (req, res) => __awaiter(void 0, void 0, void 0, function* 
             .status(500)
             .json({ message: `Error creating manager: ${error.message}` });
     }
-});
+};
 exports.createManager = createManager;
-const updateManager = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+const updateManager = async (req, res) => {
     try {
         const { cognitoId } = req.params;
         const { name, email, phoneNumber } = req.body;
-        const updateManager = yield prisma.manager.update({
+        const updateManager = await prisma.manager.update({
             where: { cognitoId },
             data: {
                 name,
@@ -72,28 +63,33 @@ const updateManager = (req, res) => __awaiter(void 0, void 0, void 0, function* 
             .status(500)
             .json({ message: `Error updating manager: ${error.message}` });
     }
-});
+};
 exports.updateManager = updateManager;
-const getManagerProperties = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+const getManagerProperties = async (req, res) => {
     try {
         const { cognitoId } = req.params;
-        const properties = yield prisma.property.findMany({
+        const properties = await prisma.property.findMany({
             where: { managerCognitoId: cognitoId },
             include: {
                 location: true,
             },
         });
-        const propertiesWithFormattedLocation = yield Promise.all(properties.map((property) => __awaiter(void 0, void 0, void 0, function* () {
-            var _a;
-            const coordinates = yield prisma.$queryRaw `SELECT ST_asText(coordinates) as coordinates from "Location" where id = ${property.location.id}`;
-            const geoJSON = (0, wkt_1.wktToGeoJSON)(((_a = coordinates[0]) === null || _a === void 0 ? void 0 : _a.coordinates) || "");
+        const propertiesWithFormattedLocation = await Promise.all(properties.map(async (property) => {
+            const coordinates = await prisma.$queryRaw `SELECT ST_asText(coordinates) as coordinates from "Location" where id = ${property.location.id}`;
+            const geoJSON = (0, wkt_1.wktToGeoJSON)(coordinates[0]?.coordinates || "");
             const longitude = geoJSON.coordinates[0];
             const latitude = geoJSON.coordinates[1];
-            return Object.assign(Object.assign({}, property), { location: Object.assign(Object.assign({}, property.location), { coordinates: {
+            return {
+                ...property,
+                location: {
+                    ...property.location,
+                    coordinates: {
                         longitude,
                         latitude,
-                    } }) });
-        })));
+                    },
+                },
+            };
+        }));
         res.json(propertiesWithFormattedLocation);
     }
     catch (err) {
@@ -101,5 +97,5 @@ const getManagerProperties = (req, res) => __awaiter(void 0, void 0, void 0, fun
             .status(500)
             .json({ message: `Error retrieving manager properties: ${err.message}` });
     }
-});
+};
 exports.getManagerProperties = getManagerProperties;
